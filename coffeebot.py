@@ -7,18 +7,17 @@ import pprint
 import requests
 
 from boto3.dynamodb.conditions import Attr
+from urlparse import parse_qs
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
-def lambda_handler(event, context):
+cards = boto3.resource('dynamodb').Table('coffee-cards')
+
+def handleKikMessage(event, context):
     log.info("Received event: " + pprint.pformat(event))
 
-    dynamo = boto3.resource('dynamodb').Table('coffee-cards')
-
-    test = dynamo.scan(
-        FilterExpression=Attr('person').ne(None)
-    )
+    test = get_used_cards()
 
     apiKey = event.get("kikApiKey")
 
@@ -51,4 +50,32 @@ def lambda_handler(event, context):
         log.info("Kik send message result: %d" % res.status_code)
         log.info(pprint.pformat(res.json()))
 
-    return None
+    # Send something back so API Gateway doesn't send a null
+    return ""
+
+def handleSlackCoffee(event, context):
+    expected_token = event.get('expectedToken')
+    log.info(pprint.pformat(event))
+
+    req_body = event['body']
+    params = parse_qs(req_body)
+    log.info(pprint.pformat(params))
+    token = params['token'][0]
+    if token != expected_token:
+        log.error("Request token (%s) does not match exptected", token)
+        raise Exception("Invalid request token")
+
+    test = get_used_cards()
+
+    response = {
+        "text": "Used cards: %d" % test['Count']
+    }
+
+    return response
+
+def get_used_cards():
+    # We have 3-4 cards, .scan works fine.
+    # For anything bigger, this would be a secondary index
+    return cards.scan(
+        FilterExpression=Attr('person').ne(None)
+    )
