@@ -1,22 +1,17 @@
 from __future__ import print_function
 
 import boto3
-from boto3.dynamodb.conditions import Attr
-import pprint
-import logging
-import requests
 import json
+import logging
+import pprint
+import requests
+
+from boto3.dynamodb.conditions import Attr
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 def lambda_handler(event, context):
-    '''Provide an event that contains the following keys:
-
-      - operation: one of the operations in the operations dict below
-      - tableName: required for operations that interact with DynamoDB
-      - payload: a parameter to pass to the operation being performed
-    '''
     log.info("Received event: " + pprint.pformat(event))
 
     dynamo = boto3.resource('dynamodb').Table('coffee-cards')
@@ -57,4 +52,3 @@ def lambda_handler(event, context):
         log.info(pprint.pformat(res.json()))
 
     return None
-
