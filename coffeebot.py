@@ -6,7 +6,7 @@ import logging
 import pprint
 import requests
 
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 from urlparse import parse_qs
 
 log = logging.getLogger()
@@ -20,6 +20,15 @@ def handleKikMessage(event, context):
     test = get_used_cards()
 
     apiKey = event.get("kikApiKey")
+
+    SBUX_CARDS = get_card_count("starbucks")
+    TM_CARDS = get_card_count("tims")
+
+    responses = []
+    responses.extend([{"type": "text", "body": "Checkout Starbucks Card %d" % (i+1)} for i in range(SBUX_CARDS)])
+    responses.extend([{"type": "text", "body": "Checkout Tim Horton's Card %d" % (i+1)} for i in range(TM_CARDS)])
+    responses.extend([{"type": "text", "body": "Return Starbucks Card %d" % (i+1)} for i in range(SBUX_CARDS)])
+    responses.extend([{"type": "text", "body": "Return Tim Horton's Card %d" % (i+1)} for i in range(TM_CARDS)])
 
     json_message = json.loads(event.get("body-json"))
 
@@ -41,7 +50,11 @@ def handleKikMessage(event, context):
                         'body': "You said %s, Used cards: %d" % (text, test['Count']),
                         'to': fromUser,
                         'type': 'text',
-                        'chatId': chatId
+                        'chatId': chatId,
+                        'keyboards': [{
+                            "type": "suggested",
+                            "responses": responses
+                        }],
                     }
                 ]
             })
@@ -62,7 +75,7 @@ def handleSlackCoffee(event, context):
     log.info(pprint.pformat(params))
     token = params['token'][0]
     if token != expected_token:
-        log.error("Request token (%s) does not match exptected", token)
+        log.error("Request token (%s) does not match expected", token)
         raise Exception("Invalid request token")
 
     test = get_used_cards()
@@ -79,3 +92,8 @@ def get_used_cards():
     return cards.scan(
         FilterExpression=Attr('person').ne(None)
     )
+
+def get_card_count(provider):
+    return cards.scan(
+        FilterExpression=Key('provider').eq(provider)
+    )['Count']
