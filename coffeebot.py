@@ -84,7 +84,7 @@ def sendKikMessage(toUser, chatId, body, responses=None):
         data=json.dumps({
             'messages': [
                 {
-                    'body': body
+                    'body': body,
                     'to': toUser,
                     'type': 'text',
                     'chatId': chatId,
