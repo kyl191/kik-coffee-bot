@@ -163,6 +163,17 @@ def return_card(provider, number, value, fromUser):
         ReturnValues = 'NONE'
         )
 
+def checkout_message(fromUser, message):
+    m = re.match("Checkout ([a-z]*) Card (\d)", message, re.IGNORECASE)
+    if not m:
+        raise Exception
+    provider = m.group(1)
+    card_number = m.group(2)
+    checkout_card(provider, card_number, fromUser)
+    return ("Thanks! {} Card {} is now checked out to you!".format(provider.capitalize(), card_number),
+            [{"type": "text", "body": "Return {} Card {}".format(provider.capitalize(), card_number)}]
+        )
+
 def checkout_card(provider, number, person):
     cards.update_item(
         Key={
