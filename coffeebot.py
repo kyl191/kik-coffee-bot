@@ -31,23 +31,25 @@ def handle_kik_message(event, context):
     for message in json_message.get("messages"):
         chat_id = message.get("chatId")
         from_user = message.get("from")
-        text = message.get("body")
+        text = message.get("body").lower()
 
         body, responses = "", ""
+        log.info("Recieved message: %s" % text)
         try:
-            if text.lower().startswith("return"):
+            if text.startswith("return"):
                 (body, responses) = pre_return_message(from_user, text)
-            elif text.lower().startswith("checkout"):
+            elif text.startswith("checkout"):
                 (body, responses) = checkout_message(from_user, text)
-            elif text.lower().startswith("get"):
+            elif text.startswith("get"):
                 body = get_card_statuses()
                 responses = default_responses()
             elif text[0].isdigit() or text.startswith("$"):
                 (body, responses) = return_message(from_user, text)
             else:
                 raise Exception
-        except:
-            body = "Sorry, I can't understand what you're trying to do"
+        except Exception as e:
+            log.info(e)
+            body = "Sorry, I can't understand what you're trying to do."
             responses = default_responses()
 
         return send_kik_message(from_user, chat_id, kik_api_key, body, responses)
@@ -73,6 +75,17 @@ def handle_slack_coffee(event, context):
 
 
 def send_kik_message(to_user, chat_id, kik_api_key, body, responses=None):
+    message = {
+        'body': body,
+        'to': to_user,
+        'type': 'text',
+        'chatId': chat_id
+    }
+    if responses:
+        message['keyboards'] = [{
+            "type": "suggested",
+            "responses": responses
+        }]
     res = requests.post(
         'https://api-kik-com-l7colnkdp3qc.runscope.net/v1/message',
         auth=('waterloo.coffee.bot', kik_api_key),
@@ -80,18 +93,7 @@ def send_kik_message(to_user, chat_id, kik_api_key, body, responses=None):
             'Content-Type': 'application/json'
         },
         data=json.dumps({
-            'messages': [
-                {
-                    'body': body,
-                    'to': to_user,
-                    'type': 'text',
-                    'chatId': chat_id,
-                    'keyboards': [{
-                        "type": "suggested",
-                        "responses": responses
-                    }],
-                }
-            ]
+            'messages': [message],
         })
     )
 
@@ -108,32 +110,34 @@ def get_card_count(provider):
 
 
 def pre_return_message(from_user, message):
-    m = re.match("Return ([a-z]*) Card (\d)", message, re.IGNORECASE)
+    m = re.match("return ([a-z]*) card (\d)", message, re.IGNORECASE)
     if not m:
+        log.info("No match found for provider & card number in message: %s" % message)
         raise Exception
     inflight.update_item(
         Key={
             'username': from_user,
             'service': 'kik'
         },
-        UpdateExpression='SET op = :val1 provider = :provider card = :card',
+        UpdateExpression='SET op = :val1, provider = :provider, card = :card',
         ExpressionAttributeValues={
             ':val1': 'return',
-            ':provider': m.match(1),
-            ':card': Decimal(m.match(2))
+            ':provider': m.group(1),
+            ':card': Decimal(m.group(2))
         }
     )
-    return ("Sweet! How much is left on the card?", "")
+    return ("Sweet! How much is left on the card? (Just the number please!)", None)
 
 
 def return_message(from_user, message):
-    m = re.match("\$?(\d*\.\d?\d?)", message)
+    m = re.match("\$?(\d*\.?\d?\d?)", message)
     req = inflight.get_item(
         Key={
             'service': 'kik',
-            'username': message.get("from")
+            'username': from_user
         }
     )['Item']
+    log.info("Got inflight item: {}".format(req))
     if req.get("op") != "return":
         return ("You have to tell me what card you're returning first...", default_responses())
     return_card(req.get("provider"), req.get("card"), m.group(1), from_user)
@@ -149,31 +153,49 @@ def return_card(provider, number, value, from_user):
     cards.update_item(
         Key={
             'provider': provider,
-            'card_number': number
+            'card_number': Decimal(number)
         },
-        UpdateExpression='SET person = :val1 ADD card_value :value',
+        UpdateExpression='SET person = :val1, card_value = :value',
         ExpressionAttributeValues={
             ':val1': None,
             ':value': Decimal(value)
         }
     )
+    date = datetime.utcnow()
+    check_transaction_record_exists(date)
     transactions.update_item(
         Key={
-            'date': datetime.strftime(datetime.utcnow(), "%Y-%m-%d")
+            'date': datetime.strftime(date, "%Y-%m-%d")
         },
-        UpdateExpression='ADD transactions = :val1',
+        UpdateExpression='SET transactions = list_append(transactions, :val1)',
         ExpressionAttributeValues={
             ':val1': ["{},{},{},{},{}".format(
-                provider, number, value, from_user, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))
+                provider, number, value, from_user, date.strftime('%Y-%m-%d %H:%M:%S'))
             ]
         },
         ReturnValues='NONE'
     )
 
 
+def check_transaction_record_exists(date):
+    date = datetime.strftime(date, "%Y-%m-%d")
+    t = transactions.get_item(
+        Key={
+            'date': date
+        })
+    if not t.get("Item"):
+        transactions.put_item(
+            Item={
+                'date': date,
+                'transactions': []
+            }
+        )
+
+
 def checkout_message(from_user, message):
-    m = re.match("Checkout ([a-z]*) Card (\d)", message, re.IGNORECASE)
+    m = re.match("checkout ([a-z]*) card (\d)", message, re.IGNORECASE)
     if not m:
+        log.info("No match found for provider & card number in message: %s" % message)
         raise Exception
     provider = m.group(1)
     card_number = m.group(2)
@@ -186,10 +208,11 @@ def checkout_message(from_user, message):
 
 
 def checkout_card(provider, number, person):
+    log.info("Assigning {} card {} to {}".format(provider, number, person))
     cards.update_item(
         Key={
             'provider': provider,
-            'card_number': number
+            'card_number': Decimal(number)
         },
         UpdateExpression='SET person = :val1',
         ExpressionAttributeValues={
@@ -199,6 +222,7 @@ def checkout_card(provider, number, person):
 
 
 def get_card_statuses():
+    log.info("Fetching card statuses")
     card_list = cards.scan()['Items']
     response = []
     for card in card_list:
@@ -206,7 +230,7 @@ def get_card_statuses():
             r = "{} card {} is checked out by @{}.".format(
                 card.get("provider").capitalize(), card.get("card_number"), card.get("person"))
         else:
-            r = "{} card {} is not checked out, current value is ${}.".format(
+            r = "{} card {} is available, current value is ${}.".format(
                 card.get("provider").capitalize(),
                 card.get("card_number"),
                 card.get("card_value", Decimal("0.00"))
@@ -216,6 +240,7 @@ def get_card_statuses():
 
 
 def default_responses():
+    log.info("Fetching default responses")
     responses = [{"type": "text", "body": "Get Card Statuses"}]
     card_list = cards.scan()['Items']
     for card in card_list:
