@@ -24,6 +24,7 @@ KIKAPIKEY = None
 SBUX_CARDS = get_card_count("starbucks")
 TM_CARDS = get_card_count("tims")
 
+
 def handleKikMessage(event, context):
     log.info("Received event: " + pprint.pformat(event))
     KIKAPIKEY = event.get("kikApiKey")
@@ -35,7 +36,6 @@ def handleKikMessage(event, context):
         text = message.get("body")
 
         body, responses = "", ""
-
         try:
             if text.lower().startswith("return"):
                 (body, responses) = pre_return_message(fromUser, text)
@@ -54,6 +54,7 @@ def handleKikMessage(event, context):
 
         return sendKikMessage(fromUser, chatId, body, responses)
 
+
 def handleSlackCoffee(event, context):
     expected_token = event.get('expectedToken')
     log.info(pprint.pformat(event))
@@ -71,6 +72,7 @@ def handleSlackCoffee(event, context):
     }
 
     return response
+
 
 def sendKikMessage(toUser, chatId, body, responses=None):
     res = requests.post(
@@ -99,11 +101,13 @@ def sendKikMessage(toUser, chatId, body, responses=None):
     log.info(pprint.pformat(res.json()))
     return res.status_code
 
+
 def get_card_count(provider):
     return cards.query(
         Select='COUNT',
         KeyConditionExpression=Key('provider').eq(provider)
     )['Count']
+
 
 def pre_return_message(fromUser, message):
     m = re.match("Return ([a-z]*) Card (\d)", message, re.IGNORECASE)
@@ -117,11 +121,12 @@ def pre_return_message(fromUser, message):
         UpdateExpression='SET op = :val1 provider = :provider card = :card',
         ExpressionAttributeValues={
             ':val1': 'return',
-            ':provider' : m.match(1),
+            ':provider': m.match(1),
             ':card': Decimal(m.match(2))
         }
     )
     return ("Sweet! How much is left on the card?", "")
+
 
 def return_message(fromUser, message):
     m = re.match("\$?(\d*\.\d?\d?)", message)
@@ -129,8 +134,8 @@ def return_message(fromUser, message):
         Key={
             'service': 'kik',
             'username': message.get("from")
-            }
-        )['Item']
+        }
+    )['Item']
     if req.get("op") != "return":
         return ("You have to tell me what card you're returning first...", default_responses())
     return_card(req.get("provider"), req.get("card"), m.group(1), fromUser)
@@ -138,8 +143,9 @@ def return_message(fromUser, message):
             req.get("provider").capitalize(),
             req.get("card"),
             fromUser
-        ),
-        default_responses())
+            ),
+            default_responses())
+
 
 def return_card(provider, number, value, fromUser):
     cards.update_item(
@@ -161,8 +167,9 @@ def return_card(provider, number, value, fromUser):
         ExpressionAttributeValues={
             ':val1': ["{},{},{},{},{}".format(provider, number, value, fromUser, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))]
         },
-        ReturnValues = 'NONE'
-        )
+        ReturnValues='NONE'
+    )
+
 
 def checkout_message(fromUser, message):
     m = re.match("Checkout ([a-z]*) Card (\d)", message, re.IGNORECASE)
@@ -172,8 +179,10 @@ def checkout_message(fromUser, message):
     card_number = m.group(2)
     checkout_card(provider, card_number, fromUser)
     return ("Thanks! {} Card {} is now checked out to you!".format(provider.capitalize(), card_number),
-            [{"type": "text", "body": "Return {} Card {}".format(provider.capitalize(), card_number)}]
-        )
+            [{"type": "text", "body": "Return {} Card {}".format(
+                provider.capitalize(), card_number)}]
+            )
+
 
 def checkout_card(provider, number, person):
     cards.update_item(
@@ -187,6 +196,7 @@ def checkout_card(provider, number, person):
         }
     )
 
+
 def get_card_statuses():
     cardList = cards.scan()['Items']
     response = []
@@ -199,6 +209,7 @@ def get_card_statuses():
                 card.get("provider").capitalize(), card.get("card_number"), card.get("card_value", decimal.Decimal("0.00")))
         response.append(r)
     return " ".join(response)
+
 
 def default_responses():
     responses = [{"type": "text", "body": "Get Card Statuses"}]
