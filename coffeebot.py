@@ -38,15 +38,16 @@ def handleKikMessage(event, context):
 
         try:
             if text.lower().startswith("return"):
-                (body, responses) = pre_return_message(fromUser, text)\
+                (body, responses) = pre_return_message(fromUser, text)
             elif text.lower().startswith("checkout"):
-
+                (body, responses) = checkout_message(fromUser, text)
             elif text.lower().startswith("get"):
-
+                body = get_card_statuses()
+                responses = default_responses()
             elif text[0].isdigit() or text.startswith("$"):
-                (body, responses) = return_message()
+                (body, responses) = return_message(fromUser, text)
             else:
-                body =
+                raise Exception
         except:
             body = "Sorry, I can't understand what you're trying to do"
             responses = default_responses()
