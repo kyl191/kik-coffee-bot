@@ -1,14 +1,15 @@
 from __future__ import print_function
 
-import boto3
 import json
 import logging
 import pprint
+import re
+
+import boto3
 import requests
+
 from datetime import datetime
 from decimal import Decimal
-import regex
-
 from boto3.dynamodb.conditions import Attr, Key
 from urlparse import parse_qs
 
@@ -20,9 +21,6 @@ inflight = boto3.resource('dynamodb').Table('coffee-cards-inflight')
 transactions = boto3.resource('dynamodb').Table('coffee-cards-transactions')
 
 KIKAPIKEY = None
-
-SBUX_CARDS = get_card_count("starbucks")
-TM_CARDS = get_card_count("tims")
 
 
 def handleKikMessage(event, context):
@@ -165,7 +163,9 @@ def return_card(provider, number, value, fromUser):
         },
         UpdateExpression='ADD transactions = :val1',
         ExpressionAttributeValues={
-            ':val1': ["{},{},{},{},{}".format(provider, number, value, fromUser, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))]
+            ':val1': ["{},{},{},{},{}".format(
+                provider, number, value, fromUser, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))
+            ]
         },
         ReturnValues='NONE'
     )
@@ -178,7 +178,8 @@ def checkout_message(fromUser, message):
     provider = m.group(1)
     card_number = m.group(2)
     checkout_card(provider, card_number, fromUser)
-    return ("Thanks! {} Card {} is now checked out to you!".format(provider.capitalize(), card_number),
+    return ("Thanks! {} Card {} is now checked out to you!".format(
+            provider.capitalize(), card_number),
             [{"type": "text", "body": "Return {} Card {}".format(
                 provider.capitalize(), card_number)}]
             )
@@ -206,7 +207,10 @@ def get_card_statuses():
                 card.get("provider").capitalize(), card.get("card_number"), card.get("person"))
         else:
             r = "{} card {} is not checked out, current value is ${}.".format(
-                card.get("provider").capitalize(), card.get("card_number"), card.get("card_value", decimal.Decimal("0.00")))
+                card.get("provider").capitalize(),
+                card.get("card_number"),
+                card.get("card_value", Decimal("0.00"))
+            )
         response.append(r)
     return " ".join(response)
 
@@ -216,7 +220,9 @@ def default_responses():
     cardList = cards.scan()['Items']
     for card in cardList:
         if card.get("person"):
-            responses.append({"type": "text", "body": "Return {} Card {}" % card.get("provider").capitalize(), card.get("card_number")})
+            responses.append({"type": "text", "body": "Return {} Card {}".format(
+                card.get("provider").capitalize(), card.get("card_number"))})
         else:
-            responses.append({"type": "text", "body": "Checkout {} Card {}" % card.get("provider").capitalize(), card.get("card_number")})
-    return "\n".join(response)
+            responses.append({"type": "text", "body": "Checkout {} Card {}".format(
+                card.get("provider").capitalize(), card.get("card_number"))})
+    return "\n".join(responses)
