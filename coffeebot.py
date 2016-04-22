@@ -22,12 +22,10 @@ cards = boto3.resource('dynamodb').Table('coffee-cards')
 inflight = boto3.resource('dynamodb').Table('coffee-cards-inflight')
 transactions = boto3.resource('dynamodb').Table('coffee-cards-transactions')
 
-KIKAPIKEY = None
-
 
 def handle_kik_message(event, context):
     log.info("Received event: " + pprint.pformat(event))
-    KIKAPIKEY = event.get("kikApiKey")
+    kik_api_key = event.get("kikApiKey")
 
     json_message = json.loads(event.get("body-json"))
     for message in json_message.get("messages"):
@@ -52,7 +50,7 @@ def handle_kik_message(event, context):
             body = "Sorry, I can't understand what you're trying to do"
             responses = default_responses()
 
-        return send_kik_message(from_user, chat_id, body, responses)
+        return send_kik_message(from_user, chat_id, kik_api_key, body, responses)
 
 
 def handle_slack_coffee(event, context):
@@ -74,10 +72,10 @@ def handle_slack_coffee(event, context):
     return response
 
 
-def send_kik_message(to_user, chat_id, body, responses=None):
+def send_kik_message(to_user, chat_id, kik_api_key, body, responses=None):
     res = requests.post(
         'https://api-kik-com-l7colnkdp3qc.runscope.net/v1/message',
-        auth=('waterloo.coffee.bot', KIKAPIKEY),
+        auth=('waterloo.coffee.bot', kik_api_key),
         headers={
             'Content-Type': 'application/json'
         },
